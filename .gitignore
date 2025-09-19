@@ -1,0 +1,43 @@
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Python virtual environments
+venv/
+.env
+
+# DuckDB database
+argo.duckdb
+
+# Chroma vector store
+chroma_store/
+
+# Output and intermediate data
+output/
+parquet/
+data/
+
+# Pipeline outputs and audits
+pipeline_outputs/
+pipeline_audits/
+
+# Test results
+pipeline_tests/
+
+# OS/IDE files
+*.pyc
+__pycache__/
+*.log
+
+# VS Code settings
+.vscode/
+
+# Ignore notebook viewer cache
+viewer.ipynb
+
+# Misc
+*.gz
+*.zip
+*.tar
+*.bz2
+*.xz
+*.zstd
