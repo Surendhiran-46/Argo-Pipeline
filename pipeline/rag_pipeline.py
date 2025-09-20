@@ -27,6 +27,7 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
+from canvas_builder import decide_and_build
 # ------------------- CONFIG & HELPERS -------------------
 
 load_dotenv()  # loads .env at repo root
@@ -551,51 +552,174 @@ def build_platform_profile_set(retrieved: List[Dict[str, Any]]) -> List[Dict[str
     return results
 
 def fetch_metadata_for_candidates(
-    con: duckdb.DuckDBPyConnection,
-    candidates: List[Dict[str, Any]],
+    con: "duckdb.DuckDBPyConnection",
+    candidates: list,
     year: str
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """
     Fetch project/researcher metadata from DuckDB for candidate platforms.
-    Looks across metadata_full tables for the given year.
+    - Looks for monthly metadata tables for the given year first (metadata_full_YYYY_MM),
+      falls back to metadata_clean_YYYY_MM and then to any metadata_full_* / metadata_clean_* tables.
+    - Handles case-insensitive / variant column names and returns a canonical dataframe.
+
+    Returns a pandas.DataFrame with canonical columns (if available):
+      ['platform_number','project_name','pi_name','wmo_inst_type','float_serial_no',
+       'format_version','handbook_version','firmware_version','config_mission_number','reference_date_time']
+
+    Defensive: returns empty DataFrame if no matches found. Does not raise on missing columns.
     """
+    import pandas as pd
+    # fast exit
     if not candidates:
         return pd.DataFrame()
 
-    # Collect unique platform numbers
+    # Build unique platform list (safe: upstream cast to int is expected)
     platforms = sorted({int(c["platform_number"]) for c in candidates if c.get("platform_number") is not None})
     if not platforms:
         return pd.DataFrame()
 
-    # Discover all metadata_full tables for this year
-    tables = [t[0] for t in con.execute(
-        "SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema='main'"
-    ).fetchall()]
-    meta_tables = [t for t in tables if t.startswith("metadata_full_") and year in t]
+    # Query available table names in DuckDB (main schema)
+    try:
+        tables = [t[0] for t in con.execute("SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema='main'").fetchall()]
+    except Exception:
+        tables = []
+
+    # Prefer metadata_full for the given year, then metadata_clean, then any metadata tables
+    def choose_meta_tables(year):
+        candidates_list = []
+        # exact year-month prefix e.g. metadata_full_2025_
+        candidates_list += [t for t in tables if t.startswith(f"metadata_full_{year}_") or t == f"metadata_full_{year}"]
+        if not candidates_list:
+            candidates_list += [t for t in tables if t.startswith(f"metadata_clean_{year}_") or t == f"metadata_clean_{year}"]
+        # fallback to any year's metadata_full
+        if not candidates_list:
+            candidates_list += [t for t in tables if t.startswith("metadata_full_")]
+        # fallback to any metadata_clean
+        if not candidates_list:
+            candidates_list += [t for t in tables if t.startswith("metadata_clean_")]
+        return sorted(set(candidates_list))
+
+    meta_tables = choose_meta_tables(year)
 
     if not meta_tables:
-        raise RuntimeError(f"No metadata_full tables found for year={year}")
+        # nothing to read
+        return pd.DataFrame(columns=[
+            "platform_number","project_name","pi_name","wmo_inst_type","float_serial_no",
+            "format_version","handbook_version","firmware_version","config_mission_number","reference_date_time"
+        ])
 
+    # Helper: map available columns in a table to canonical names
+    def map_columns_for_table(tbl_name):
+        # read PRAGMA table_info to get actual column names
+        try:
+            cols_info = con.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
+            existing_cols = [c[1] for c in cols_info]  # PRAGMA returns (cid,name,type,notnull,default,pk)
+        except Exception:
+            existing_cols = []
+
+        # lower map for lookup
+        existing_lower = {c.lower(): c for c in existing_cols}
+
+        # candidate keys to search for each desired canonical field (order = priority)
+        lookup = {
+            "platform_number": ["platform_number", "platform", "PLATFORM_NUMBER", "PLATFORM"],
+            "project_name": ["project_name", "project", "PROJECT_NAME"],
+            "pi_name": ["pi_name", "pi", "PI_NAME", "investigator"],
+            "wmo_inst_type": ["wmo_inst_type", "wmo", "WMO_INST_TYPE"],
+            "float_serial_no": ["float_serial_no", "float_serial", "FLOAT_SERIAL_NO", "serial_number"],
+            "format_version": ["format_version", "FORMAT_VERSION"],
+            "handbook_version": ["handbook_version", "HANDBOOK_VERSION"],
+            "firmware_version": ["firmware_version", "FIRMWARE_VERSION"],
+            "config_mission_number": ["config_mission_number", "CONFIG_MISSION_NUMBER"],
+            "reference_date_time": ["reference_date_time", "REFERENCE_DATE_TIME", "ref_date"]
+        }
+
+        mapped = {}
+        for canon, candidates_keys in lookup.items():
+            found = None
+            for k in candidates_keys:
+                if k.lower() in existing_lower:
+                    found = existing_lower[k.lower()]
+                    break
+            mapped[canon] = found  # may be None
+        return mapped, existing_cols
+
+    # Build a safe platform list string (we already converted to int)
     plat_list = ",".join(map(str, platforms))
-    rows = []
+
+    dfs = []
     for tbl in meta_tables:
-        sql = f"""
-        SELECT platform_number, project_name, pi_name, wmo_inst_type, float_serial_no
-        FROM {tbl}
-        WHERE platform_number IN ({plat_list})
-        """
+        mapped_cols, existing_cols = map_columns_for_table(tbl)
+        # if platform column does not exist in this table, skip it
+        plat_col = mapped_cols.get("platform_number")
+        if plat_col is None:
+            # skip this table (can't filter without platform column)
+            continue
+
+        # Build SELECT clause: use existing column AS canonical_name, else NULL AS canonical_name
+        select_snippets = []
+        for canon in ["platform_number","project_name","pi_name","wmo_inst_type","float_serial_no",
+                      "format_version","handbook_version","firmware_version","config_mission_number","reference_date_time"]:
+            src = mapped_cols.get(canon)
+            if src:
+                # alias to canonical name (lowercase canonical column)
+                select_snippets.append(f"{src} AS {canon}")
+            else:
+                select_snippets.append(f"NULL AS {canon}")
+
+        sql = f"SELECT {', '.join(select_snippets)} FROM {tbl} WHERE {plat_col} IN ({plat_list})"
         try:
             df = con.execute(sql).fetchdf()
-            if not df.empty:
-                rows.append(df)
+            if df is None or df.empty:
+                continue
+            # ensure canonical columns exist (duckdb may return uppercase/lowercase as-is)
+            df.columns = [c.lower() for c in df.columns]
+            # rename to canonical lowercase names we used
+            # coerces types
+            # convert platform_number to integer-like (nullable)
+            if "platform_number" in df.columns:
+                df["platform_number"] = pd.to_numeric(df["platform_number"], errors="coerce").astype("Int64")
+            # parse reference_date_time to datetime if present
+            if "reference_date_time" in df.columns:
+                try:
+                    df["reference_date_time"] = pd.to_datetime(df["reference_date_time"], errors="coerce", utc=True)
+                except Exception:
+                    df["reference_date_time"] = df["reference_date_time"].astype(str)
+            dfs.append(df)
         except Exception as e:
+            # print warning and continue
             print(f"[WARN] metadata query failed on {tbl}: {e}")
             continue
 
-    if rows:
-        return pd.concat(rows, ignore_index=True)
-    else:
-        return pd.DataFrame(columns=["platform_number","project_name","pi_name","wmo_inst_type","float_serial_no"])
+    if not dfs:
+        # nothing matched
+        return pd.DataFrame(columns=[
+            "platform_number","project_name","pi_name","wmo_inst_type","float_serial_no",
+            "format_version","handbook_version","firmware_version","config_mission_number","reference_date_time"
+        ])
+
+    # concat and deduplicate by platform_number keeping the first observed row
+    df_all = pd.concat(dfs, ignore_index=True, sort=False)
+
+    # normalize column order & names (lowercase canonical)
+    desired_cols = ["platform_number","project_name","pi_name","wmo_inst_type","float_serial_no",
+                    "format_version","handbook_version","firmware_version","config_mission_number","reference_date_time"]
+    for c in desired_cols:
+        if c not in df_all.columns:
+            df_all[c] = pd.NA
+
+    # keep only desired columns (in canonical order)
+    df_all = df_all[desired_cols]
+
+    # drop duplicates (prefer earliest encountered row)
+    df_all = df_all.drop_duplicates(subset=["platform_number"], keep="first").reset_index(drop=True)
+
+    # final tidy: cast numeric-like columns where possible
+    for c in ["format_version","handbook_version","config_mission_number","wmo_inst_type"]:
+        if c in df_all.columns:
+            df_all[c] = pd.to_numeric(df_all[c], errors="coerce")
+
+    return df_all
 
 
 def fetch_measurements_for_candidates(
@@ -1219,6 +1343,90 @@ def call_azure_openai_chat(system_prompt: str, user_prompt: str, endpoint: str =
         raise RuntimeError("Unexpected LLM response structure: " + json.dumps(data)[:1000])
     return content, data
 
+import re, json
+
+# ------------ Extraction + Validation helpers -------------------
+
+def extract_structured_json(answer_text: str):
+    """
+    Try to extract structured JSON from answer_text.
+    1) Prefer marker extraction between ===STRUCTURED_JSON_START=== and ===STRUCTURED_JSON_END===
+    2) Next, try ```json ... ``` block
+    3) Fallback: attempt to find top-level JSON object (first { ... last }).
+    Returns (payload_dict_or_None, error_str_or_None)
+    """
+    if not isinstance(answer_text, str):
+        return None, "answer_not_string"
+
+    # 1) marker extraction
+    start_marker = "===STRUCTURED_JSON_START==="
+    end_marker = "===STRUCTURED_JSON_END==="
+    if start_marker in answer_text and end_marker in answer_text:
+        try:
+            inner = answer_text.split(start_marker, 1)[1].split(end_marker, 1)[0].strip()
+            payload = json.loads(inner)
+            return payload, None
+        except Exception as e:
+            return None, f"marker_json_parse_error: {e}"
+
+    # 2) fenced code block (```json ... ```)
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", answer_text, flags=re.S | re.I)
+    if m:
+        txt = m.group(1)
+        try:
+            payload = json.loads(txt)
+            return payload, None
+        except Exception as e:
+            return None, f"fenced_json_parse_error: {e}"
+
+    # 3) best-effort first {...} ... } match
+    try:
+        first = answer_text.find("{")
+        last = answer_text.rfind("}")
+        if first != -1 and last != -1 and last > first:
+            snippet = answer_text[first:last+1]
+            payload = json.loads(snippet)
+            return payload, None
+    except Exception as e:
+        return None, f"fallback_json_parse_error: {e}"
+
+    return None, "no_json_found"
+
+def validate_structured_payload(payload: dict):
+    """
+    Lightweight schema validator for types supported by frontend.
+    Returns (True, None) or (False, error_string)
+    """
+    if not isinstance(payload, dict):
+        return False, "not_object"
+
+    t = payload.get("type")
+    if t == "table":
+        if not isinstance(payload.get("headers"), list):
+            return False, "table_missing_headers"
+        if not isinstance(payload.get("rows"), list):
+            return False, "table_missing_rows"
+    elif t == "chart":
+        if payload.get("chartType") not in ("line","bar","area"):
+            return False, "chart_invalid_chartType"
+        if not payload.get("xKey") or not payload.get("yKey"):
+            return False, "chart_missing_keys"
+        if not isinstance(payload.get("data"), list):
+            return False, "chart_missing_data"
+    elif t == "map":
+        if not isinstance(payload.get("points"), list):
+            return False, "map_missing_points"
+    elif t == "text":
+        if "content" not in payload:
+            return False, "text_missing_content"
+    elif t == "multi":
+        if not isinstance(payload.get("visuals"), list):
+            return False, "multi_missing_visuals"
+    else:
+        return False, f"unknown_type:{t}"
+
+    return True, None
+
 # --------------- Orchestration / CLI ---------------
 
 def run_rag_query(
@@ -1420,14 +1628,41 @@ def run_rag_query(
         con.close()
         return {"status": "error", "error": "Context assembly failed: " + str(e), "audit": audit}
 
+    # Save small numeric sample if not empty (this path will be referenced in visuals)
+    sample_csv_path = None
+    if not df_numeric.empty:
+        sample_csv_path = str(output_json.with_suffix(".sample.csv")) if output_json else None
+        if sample_csv_path:
+            df_numeric.head(2000).to_csv(sample_csv_path, index=False)
+
+    # Build deterministic canvas payloads (no LLM)
+    try:
+        canvas = decide_and_build(query, df_numeric, df_metadata, sample_csv=sample_csv_path)
+    except Exception as e:
+        # Canvas builder should never crash the pipeline — swallow errors and continue
+        canvas = {"visuals": [], "rationale": f"canvas_builder_error: {str(e)}"}
+
     # Step 6: prepare system/user prompts and call LLM with retry/backoff
     system_prompt = (
-        "You are an expert oceanography assistant with access ONLY to the provided context. Do NOT invent facts. Strict rules:\n"
-        "1) Use only the data in the Context section below.\n"
-        "2) If requested data is not present, respond EXACTLY 'INSUFFICIENT_CONTEXT' and list what's missing.\n"
-        "3) Cite provenance for numeric claims: [SQL:<note>] or [DOC:<id>].\n"
-        "4) Provide a short 3-sentence summary and 1-3 recommended visualizations with explicit columns.\n"
+        "You are an expert oceanography assistant with access ONLY to the provided context. Strict rules:\n"
+        "1) Use only the data in the Context section below. Do NOT invent facts.\n"
+        "2) If requested data is not present, respond EXACTLY: INSUFFICIENT_CONTEXT.\n"
+        "3) Cite provenance for numeric claims using [SQL:<note>] or [DOC:<id>].\n"
+        "4) Produce TWO parts in your response:\n"
+        "   A) A short human-friendly answer (3 sentences max) with citations and recommended visualizations.\n"
+        "   B) A machine-readable JSON block named 'structured' enclosed between the markers\n"
+        "      ===STRUCTURED_JSON_START=== and ===STRUCTURED_JSON_END===\n"
+        "      The JSON must be valid UTF-8 JSON (no trailing text inside the markers) and follow one of these shapes:\n"
+        "        TABLE:  {\"type\":\"table\",\"title\":str,\"headers\":[...],\"rows\":[[...],...]}\n"
+        "        CHART:  {\"type\":\"chart\",\"title\":str,\"chartType\":\"line|bar|area\",\"xKey\":str,\"yKey\":str,\"data\":[{x:...,y:...},...]}\n"
+        "        MAP:    {\"type\":\"map\",\"title\":str,\"points\":[{\"lat\":num,\"lon\":num,\"label\":str},...]}\n"
+        "        TEXT:   {\"type\":\"text\",\"content\":str}\n"
+        "5) If multiple visuals are useful, 'structured' may have {\"type\":\"multi\",\"visuals\":[...]}.\n"
+        "6) IMPORTANT: Put ONLY the valid JSON between the markers. The JSON block will be parsed programmatically.\n"
+        "7) If you cannot produce structured JSON with confidence, still give the human answer and set structured to {\"type\":\"text\",\"content\":\"INSUFFICIENT_CONTEXT\"} between the markers.\n"
     )
+
+
     user_prompt = f"Query: {query}\n\nContext:\n{context}\n\nAnswer concisely."
 
     # perform the LLM call with simple retry/backoff
@@ -1438,7 +1673,7 @@ def run_rag_query(
     for attempt in range(1, max_attempts + 1):
         try:
             t0 = time.time()
-            answer_text, raw = call_azure_openai_chat(system_prompt, user_prompt)
+            answer_text, raw = call_azure_openai_chat(system_prompt, user_prompt, max_tokens=1200, temperature=0.0)
             audit["steps"].setdefault("llm_calls", []).append({"attempt": attempt, "duration_s": time.time() - t0})
             break
         except Exception as e:
@@ -1453,6 +1688,27 @@ def run_rag_query(
         audit_path.write_text(json.dumps(audit, default=str, indent=2))
         con.close()
         return out
+    
+    # After LLM call:
+    structured_payload, struct_err = extract_structured_json(answer_text)
+    structured_valid = False
+    structured_validation_error = None
+    if structured_payload is not None:
+        ok, v_err = validate_structured_payload(structured_payload)
+        if ok:
+            structured_valid = True
+        else:
+            structured_validation_error = v_err
+    else:
+        structured_validation_error = struct_err
+
+    # Choose final 'structured' to include in out
+    if structured_valid:
+        final_structured = structured_payload
+    else:
+        # Fallback deterministic canvas you already built earlier
+        final_structured = canvas if canvas is not None else {"type":"text","content":"INSUFFICIENT_CONTEXT"}
+
 
     # Step 7: finalize output and write files
     try:
@@ -1465,7 +1721,13 @@ def run_rag_query(
             "metadata_rows": int(len(df_metadata)),
             "answer": answer_text,
             "llm_raw": raw,
+            "canvas": canvas
         }
+        out["structured"] = final_structured
+        out["structured_valid"] = bool(structured_valid)
+        if structured_valid is False:
+            out["structured_error"] = structured_validation_error
+            out["structured_raw_attempt"] = (structured_payload or None)
 
         # write optional numeric sample CSV and output JSON
         if output_json:
