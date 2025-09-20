@@ -14,7 +14,7 @@ import json
 import time
 import argparse
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 import duckdb
 import pandas as pd
@@ -1252,14 +1252,14 @@ def run_rag_query(
     import json
     import traceback
     from pathlib import Path
-    from datetime import datetime
+    from datetime import datetime, timezone
     import logging
 
     logger = logging.getLogger(__name__)
     start_time = time.time()
     audit = {
         "id": str(uuid.uuid4()),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "query": query,
         "year": year,
         "months": months,
