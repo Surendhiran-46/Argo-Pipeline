@@ -208,6 +208,8 @@ if __name__ == "__main__":
         "Compare temperature vs salinity in the Arabian Sea for the last 6 months",
         "What are the nearest ARGO floats to 10.5, 75.3?",
         "Give float details for platform 5906527",
+        "Give details of platform 9999999",
+        "Summarize all available floats for January 2025"
     ]
     for q in examples:
         print("Q:", q)
