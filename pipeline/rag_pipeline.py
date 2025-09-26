@@ -27,7 +27,7 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
-from canvas_builder import decide_and_build
+from pipeline.canvas_builder import decide_and_build
 # ------------------- CONFIG & HELPERS -------------------
 
 load_dotenv()  # loads .env at repo root

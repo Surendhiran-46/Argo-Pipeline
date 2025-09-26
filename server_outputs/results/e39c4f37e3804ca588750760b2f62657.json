@@ -1,0 +1,143 @@
+{
+  "status": "ok",
+  "query": "What is the average temperature near indian region in march",
+  "retrieved_count": 184,
+  "candidates_count": 184,
+  "numeric_rows": 24797,
+  "metadata_rows": 63,
+  "answer": "A) Human-friendly answer:\nThe average temperature near the Indian region in March, based on available Argo float data, is approximately 11.4\u00b0C [SQL:24797 rows]. This value is an overall mean and includes measurements from various depths, not just the surface. For a clearer understanding, a histogram or line chart showing temperature distribution by depth or location is recommended.\n\nB) Structured JSON:\n===STRUCTURED_JSON_START===\n{\n  \"type\": \"table\",\n  \"title\": \"Average Temperature near Indian Region in March (All Depths)\",\n  \"headers\": [\"Variable\", \"Mean (\u00b0C)\", \"Median (\u00b0C)\", \"Min (\u00b0C)\", \"Max (\u00b0C)\", \"Std Dev\"],\n  \"rows\": [\n    [\"TEMP\", 11.41, 9.62, -1.24, 31.17, 8.33],\n    [\"TEMP_ADJUSTED\", 11.73, 10.12, -1.23, 30.84, 8.06]\n  ]\n}\n===STRUCTURED_JSON_END===",
+  "llm_raw": {
+    "choices": [
+      {
+        "content_filter_results": {
+          "hate": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "protected_material_code": {
+            "filtered": false,
+            "detected": false
+          },
+          "protected_material_text": {
+            "filtered": false,
+            "detected": false
+          },
+          "self_harm": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "sexual": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "violence": {
+            "filtered": false,
+            "severity": "safe"
+          }
+        },
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "annotations": [],
+          "content": "A) Human-friendly answer:\nThe average temperature near the Indian region in March, based on available Argo float data, is approximately 11.4\u00b0C [SQL:24797 rows]. This value is an overall mean and includes measurements from various depths, not just the surface. For a clearer understanding, a histogram or line chart showing temperature distribution by depth or location is recommended.\n\nB) Structured JSON:\n===STRUCTURED_JSON_START===\n{\n  \"type\": \"table\",\n  \"title\": \"Average Temperature near Indian Region in March (All Depths)\",\n  \"headers\": [\"Variable\", \"Mean (\u00b0C)\", \"Median (\u00b0C)\", \"Min (\u00b0C)\", \"Max (\u00b0C)\", \"Std Dev\"],\n  \"rows\": [\n    [\"TEMP\", 11.41, 9.62, -1.24, 31.17, 8.33],\n    [\"TEMP_ADJUSTED\", 11.73, 10.12, -1.23, 30.84, 8.06]\n  ]\n}\n===STRUCTURED_JSON_END===",
+          "refusal": null,
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": 1758862532,
+    "id": "chatcmpl-CJumSDJmneoy0ld1iZp1JUikF6z3A",
+    "model": "gpt-4.1-2025-04-14",
+    "object": "chat.completion",
+    "prompt_filter_results": [
+      {
+        "prompt_index": 0,
+        "content_filter_results": {
+          "hate": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "jailbreak": {
+            "filtered": false,
+            "detected": false
+          },
+          "self_harm": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "sexual": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "violence": {
+            "filtered": false,
+            "severity": "safe"
+          }
+        }
+      }
+    ],
+    "system_fingerprint": "fp_9ab7d013ff",
+    "usage": {
+      "completion_tokens": 223,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "prompt_tokens": 17056,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "total_tokens": 17279
+    }
+  },
+  "canvas": {
+    "visuals": [
+      {
+        "schema_version": "1.0",
+        "type": "visualization_unavailable",
+        "reason": "Missing lat/lon columns."
+      }
+    ],
+    "rationale": "resolved_intent=map; Detected geographic intent -> build map from time_location/metadata."
+  },
+  "structured": {
+    "type": "table",
+    "title": "Average Temperature near Indian Region in March (All Depths)",
+    "headers": [
+      "Variable",
+      "Mean (\u00b0C)",
+      "Median (\u00b0C)",
+      "Min (\u00b0C)",
+      "Max (\u00b0C)",
+      "Std Dev"
+    ],
+    "rows": [
+      [
+        "TEMP",
+        11.41,
+        9.62,
+        -1.24,
+        31.17,
+        8.33
+      ],
+      [
+        "TEMP_ADJUSTED",
+        11.73,
+        10.12,
+        -1.23,
+        30.84,
+        8.06
+      ]
+    ]
+  },
+  "structured_valid": true,
+  "numeric_sample_csv": "I:\\SIH - FloatChat\\ArgoPipeline\\server_outputs\\results\\e39c4f37e3804ca588750760b2f62657.sample.csv",
+  "output_json": "I:\\SIH - FloatChat\\ArgoPipeline\\server_outputs\\results\\e39c4f37e3804ca588750760b2f62657.json",
+  "audit_path": "pipeline_audits\\audit_7659ad0f-144b-41d8-9af8-1b5272068767.json",
+  "job_id": "e39c4f37e3804ca588750760b2f62657",
+  "completed_at": "2025-09-26T04:55:38.960348+00:00"
+}

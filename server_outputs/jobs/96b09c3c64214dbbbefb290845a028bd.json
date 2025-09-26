@@ -1,0 +1,21 @@
+{
+  "job_id": "96b09c3c64214dbbbefb290845a028bd",
+  "created_at": "2025-09-22T08:53:03.060913+00:00",
+  "status": "done",
+  "params": {
+    "query": "Fetch all profiles",
+    "year": "2025",
+    "months": [
+      "08"
+    ],
+    "top_k": 10000,
+    "date_from": null,
+    "date_to": null,
+    "sync": false,
+    "out_name": null
+  },
+  "updated_at": "2025-09-22T08:53:24.658356+00:00",
+  "notes": null,
+  "result_path": "I:\\SIH - FloatChat\\ArgoPipeline\\server_outputs\\results\\96b09c3c64214dbbbefb290845a028bd.json",
+  "error": null
+}

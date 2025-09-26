@@ -1,0 +1,21 @@
+{
+  "job_id": "553ab9e3173b454d9598fee1f0d33ea2",
+  "created_at": "2025-09-22T09:55:07.243695+00:00",
+  "status": "done",
+  "params": {
+    "query": "What is the average temperature near indian region in march",
+    "year": "2025",
+    "months": [
+      "03"
+    ],
+    "top_k": 200,
+    "date_from": null,
+    "date_to": null,
+    "sync": false,
+    "out_name": null
+  },
+  "updated_at": "2025-09-22T09:55:22.114571+00:00",
+  "notes": null,
+  "result_path": "I:\\SIH - FloatChat\\ArgoPipeline\\server_outputs\\results\\553ab9e3173b454d9598fee1f0d33ea2.json",
+  "error": null
+}

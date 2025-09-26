@@ -97,8 +97,28 @@ def find_col(df: pd.DataFrame, candidate: str) -> Optional[str]:
             return c
     return None
 
+# ---------------- Provenance Helper ----------------
+def _default_provenance(source: Optional[str] = None,
+                        generator: str = "canvas_builder",
+                        note: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Build a minimal provenance record.
+    Includes:
+      - source: dataset/file identifier
+      - generator: which module created this
+      - created_at: ISO timestamp
+      - note: optional annotation
+    """
+    return {
+        "source": source or "unknown",
+        "generator": generator,
+        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "note": note or ""
+    }
+
+
 # ---------------- Payload Builders ----------------
-def build_table_payload(title: str, df: pd.DataFrame, sample_csv_path: Optional[str]=None, max_rows:int=MAX_TABLE_ROWS) -> Dict[str,Any]:
+def build_table_payload(title: str, df: pd.DataFrame, sample_csv_path: Optional[str]=None, max_rows:int=MAX_TABLE_ROWS, source: Optional[str]=None) -> Dict[str,Any]:
     """Return a 'table' JSON payload (headers + rows). Limited to max_rows inline."""
     if df is None:
         df = pd.DataFrame()
@@ -120,7 +140,7 @@ def build_table_payload(title: str, df: pd.DataFrame, sample_csv_path: Optional[
         "rows": rows,
         "row_count": int(len(df)),
         "sample_csv": sample_csv_path or None,
-        "provenance": {},  # optional: fill in table name / file identifiers if you have them
+        "provenance": _default_provenance(source=source, note="table preview"),
     }
     return payload
 
@@ -137,7 +157,7 @@ def _downsample_df_for_chart(df: pd.DataFrame, max_points: int = MAX_CHART_POINT
 
 def build_chart_payload(title: str, df: pd.DataFrame, x: str, y: str,
                         chart_type: str = "line", color: Optional[str] = None,
-                        sample_csv_path: Optional[str] = None) -> Dict[str,Any]:
+                        sample_csv_path: Optional[str] = None, source: Optional[str] = None) -> Dict[str,Any]:
     """
     Build a chart payload. df should include x and y columns.
     chart_type: 'line'|'bar'|'area'
@@ -189,13 +209,13 @@ def build_chart_payload(title: str, df: pd.DataFrame, x: str, y: str,
         "sample_csv": sample_csv_path or None,
         "aggregates": aggregates,
         "downsampled": len(df) > len(data),
-        "provenance": {}
+        "provenance": _default_provenance(source=source, note="chart preview"),
     }
     if color and color in df.columns:
         payload["color"] = color
     return payload
 
-def build_map_payload(title: str, df: pd.DataFrame, lat_col="LATITUDE", lon_col="LONGITUDE", label_col:Optional[str]=None, sample_csv_path:Optional[str]=None) -> Dict[str,Any]:
+def build_map_payload(title: str, df: pd.DataFrame, lat_col="LATITUDE", lon_col="LONGITUDE", label_col:Optional[str]=None, sample_csv_path:Optional[str]=None, source: Optional[str]=None) -> Dict[str,Any]:
     """
     Return a map points payload (list of points).
     Only include points where both lat & lon are present and numeric.
@@ -247,7 +267,7 @@ def build_map_payload(title: str, df: pd.DataFrame, lat_col="LATITUDE", lon_col=
         "omitted_count": omitted_count,
         "omitted_reasons": omitted_reasons,
         "sample_csv": sample_csv_path or None,
-        "provenance": {}
+        "provenance": _default_provenance(source=source, note="map preview"),
     }
     return payload
 

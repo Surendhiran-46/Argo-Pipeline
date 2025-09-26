@@ -1,0 +1,21 @@
+{
+  "job_id": "a8774d972ee8494caa01caf8f212d3b4",
+  "created_at": "2025-09-22T08:40:27.267917+00:00",
+  "status": "done",
+  "params": {
+    "query": "What is the minimum pressure recorded by floats in 2025?",
+    "year": "2025",
+    "months": [
+      "01"
+    ],
+    "top_k": 200,
+    "date_from": null,
+    "date_to": null,
+    "sync": false,
+    "out_name": null
+  },
+  "updated_at": "2025-09-22T08:40:43.028640+00:00",
+  "notes": null,
+  "result_path": "I:\\SIH - FloatChat\\ArgoPipeline\\server_outputs\\results\\a8774d972ee8494caa01caf8f212d3b4.json",
+  "error": null
+}
